@@ -1,0 +1,9 @@
+<div class="gallery">
+    <div class="card" *ngFor="let data of reportData">
+        <img [src]="data.download_url"  class="object-fit-cover" alt="data.id">
+        <div class="card-content">
+            <h3>{{data.author}}</h3>
+            <p><a [href]="data.url" target="_blank">{{data.url}}</a></p>
+        </div>
+    </div>
+  </div>
