@@ -7,7 +7,7 @@ export interface ReportDataDTO {
   download_url: string;
 }
 
-export const DEFAULT_PAGE_INDEX=1;
+export const DEFAULT_PAGE_INDEX=0;
 export const DEFAULT_PAGE_LIMIT=15;
 
 export const PAGE_STATE_KEY = 'current-page'

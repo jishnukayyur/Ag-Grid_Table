@@ -1,72 +1,131 @@
-import { AfterViewInit, Component, Input, OnInit, Output, ViewChild } from '@angular/core';
-import { ColDef, GridReadyEvent, IServerSideDatasource, PaginationChangedEvent, PaginationNumberFormatterParams } from 'ag-grid-community';
-import { HttpClient } from '@angular/common/http';
-import { DEFAULT_PAGE_INDEX, DEFAULT_PAGE_LIMIT, PAGE_STATE_KEY, PaginationEvent, ReportDataDTO } from 'src/app/shared/constants';
-import { ReportService } from '../services/report.service';
-import {  CustomImage } from 'src/app/shared/custom-cell/custom-image.component';
+import {
+  Component
+} from '@angular/core';
+import {
+  ColDef,
+  GridApi,
+  GridReadyEvent
+} from 'ag-grid-community';
+import 'ag-grid-enterprise';
+import {
+  PAGE_STATE_KEY,
+  PaginationEvent,
+  ReportDataDTO
+} from 'src/app/shared/constants';
+import { CustomImage } from 'src/app/shared/custom-cell/custom-image.component';
 import { CustomUrl } from 'src/app/shared/custom-cell/custom-url.component';
-import { BehaviorSubject, Observable, Subject, debounceTime, filter, switchMap } from 'rxjs';
-import { AgGridAngular } from 'ag-grid-angular';
+import { ReportService } from '../services/report.service';
 
 @Component({
   selector: 'app-grid',
   templateUrl: './grid.component.html',
   styleUrls: ['./grid.component.scss'],
 })
-export class GridComponent implements OnInit {
-  @ViewChild('agGridRef') agGridRef!: AgGridAngular;
+export class GridComponent {
   reportData: ReportDataDTO[] = [];
-
   columnDefs: ColDef[] = [
-    { headerName: 'ID', field: 'id',cellClass:'id-class',maxWidth: 90 },
-    { headerName: 'Author', field: 'author' },
-    { headerName: 'Width', field: 'width' },
-    { headerName: 'Height', field: 'height' },
-    { headerName: 'URL', field: 'download_url', cellRenderer: CustomImage,maxWidth: 150 },
-    { headerName: 'Download URL', field: 'url', cellRenderer: CustomUrl,maxWidth: 200 },
+    {
+      headerName: 'ID',
+      field: 'id',
+      cellClass: 'id-class',
+      maxWidth: 90,
+      filter: 'agTextColumnFilter',
+    },
+    { headerName: 'Author', field: 'author', filter: 'agTextColumnFilter' },
+    { headerName: 'Width', field: 'width', filter: 'agNumberColumnFilter' },
+    { headerName: 'Height', field: 'height', filter: 'agNumberColumnFilter' },
+    {
+      headerName: 'URL',
+      field: 'download_url',
+      cellRenderer: CustomImage,
+      maxWidth: 150,
+    },
+    {
+      headerName: 'Download URL',
+      field: 'url',
+      cellRenderer: CustomUrl,
+      maxWidth: 200,
+      filter: 'agTextColumnFilter',
+    },
   ];
-  public paginationPageSize = 15;
-  public paginationPageSizeSelector: number[] | boolean = [15, 30];
-  reportDataGet$ = new BehaviorSubject<PaginationChangedEvent>(
-    <PaginationChangedEvent>{}
-  );
+
+  paginationPageSize = 15;
+  totalPages: number = 0;
+  currentPage: number = 1;
+  gridApi!: GridApi;
 
   constructor(private readonly _reportService: ReportService) {}
 
-  ngOnInit() {
-    this.getData()
+  /**
+   * Sets the current page state in the local storage.
+   *
+   * This function creates a `PaginationEvent` object with the current page index and page size,
+   * and then stores it in the local storage using the `PAGE_STATE_KEY` as the key.
+   * The `PaginationEvent` object is serialized to a JSON string before being stored.
+   *
+   * @return {void} This function does not return a value.
+   */
+  setCurrentPageState(): void {
+    const paginationSize: PaginationEvent = {
+      pageIndex: this.currentPage,
+      pageSize: this.paginationPageSize,
+    };
+    localStorage.setItem(PAGE_STATE_KEY, JSON.stringify(paginationSize));
   }
 
-
-  getData(){
-    this.reportDataGet$.pipe(
-      debounceTime(1000),
-      switchMap((res) =>
-        this._reportService.getData(
-          res.api?.paginationGetCurrentPage()|| DEFAULT_PAGE_INDEX,
-          res.api?.paginationGetPageSize() || DEFAULT_PAGE_LIMIT
-        )
-      )
-    ).subscribe(res=> this.reportData = res);
+  /**
+   * Initializes the grid when it is ready.
+   *
+   * @param {GridReadyEvent} params - The event object containing the grid API.
+   * @return {void} This function does not return anything.
+   */
+  onGridReady(params: GridReadyEvent) {
+    this.gridApi = params.api;
+    this.loadDataForPage(this.currentPage);
   }
 
-  onPaginationChanged(event: PaginationChangedEvent): void {
-
-    this.setCurrentPageState(
-      event.api?.paginationGetPageSize() || DEFAULT_PAGE_LIMIT,
-      event.api?.paginationGetCurrentPage() || DEFAULT_PAGE_INDEX
-    );
-
-    if(event.newPage ||event.newPageSize){
-      this.reportDataGet$.next(event);
-    }
+  /**
+   * Updates the current page and loads the data for the new page.
+   *
+   * @param {number} page - The new page number.
+   * @return {void} This function does not return anything.
+   */
+  onPageChanged(page: number): void {
+    this.currentPage = page;
+    this.loadDataForPage(page);
+    this.setCurrentPageState();
   }
-  
-  setCurrentPageState(pageSize:number,pageIndex:number):void{
-    const paginationSize:PaginationEvent = {
-      pageIndex:pageIndex,
-      pageSize:pageSize
-    }
-    localStorage.setItem(PAGE_STATE_KEY,JSON.stringify(paginationSize))
+
+  /**
+   * Updates the pagination page size, sets the current page state in local storage,
+   * and loads the data for the current page.
+   *
+   * @param {number} pageLimit - The new pagination page size.
+   * @return {void} This function does not return anything.
+   */
+  onPageLimitChanged(pageLimit: number): void {
+    this.paginationPageSize = pageLimit;
+    this.setCurrentPageState();
+    this.loadDataForPage(this.currentPage);
+  }
+
+  /**
+   * Loads data for a specific page and updates the reportData and totalPages properties.
+   *
+   * @param {number} page - The page number to load data for.
+   * @return {void} This function does not return anything.
+   */
+  loadDataForPage(page: number) {
+    const params = {
+      page: page,
+      pageSize: this.paginationPageSize,
+    };
+
+    this._reportService
+      .getData(params.page, params.pageSize)
+      .subscribe((data) => {
+        this.reportData = data;
+        this.totalPages = Math.ceil(200 / this.paginationPageSize);
+      });
   }
 }
